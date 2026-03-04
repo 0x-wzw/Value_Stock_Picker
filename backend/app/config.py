@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
@@ -7,8 +7,15 @@ class Settings(BaseSettings):
     app_name: str = "Value Stock Picker"
     debug: bool = False
 
-    # Database
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/value_stock_picker"
+    # Database — individual components (matches origin/main pattern)
+    postgres_server: str = "localhost"
+    postgres_user: str = "postgres"
+    postgres_password: str = "postgres"
+    postgres_db: str = "value_stock_picker"
+
+    @property
+    def database_url(self) -> str:
+        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_server}/{self.postgres_db}"
 
     # Auth
     secret_key: str = "changeme-in-production-use-a-long-random-string"
@@ -26,9 +33,7 @@ class Settings(BaseSettings):
     fundamentals_cache_ttl: int = 3600  # 1 hour for fundamentals
     filings_cache_ttl: int = 86400      # 24 hours for SEC filings
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
 @lru_cache
