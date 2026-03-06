@@ -3,9 +3,10 @@ data_service.py
 ---------------
 Fetches real-time and static financial data from open sources:
 
-  1. yfinance  — real-time quotes, historical prices, fundamentals
-  2. SEC EDGAR — 10-K / 10-Q filings, XBRL company facts (open government data)
-  3. SEC EDGAR full-text search — filing document list
+  1. yfinance     — real-time quotes, historical prices, fundamentals,
+                    news, options, insider/institutional data
+  2. SEC EDGAR    — 10-K / 10-Q filings, XBRL company facts (open gov data)
+  3. Alpha Vantage — supplementary fundamentals & earnings (optional free key)
 
 All results are cached in-process with configurable TTLs so repeated requests
 within the same server process avoid redundant network calls.
@@ -1178,4 +1179,154 @@ def get_cache_stats() -> dict:
         "filings_cache": {"size": len(_filings_cache), "maxsize": _filings_cache.maxsize, "ttl": _filings_cache.ttl},
         "sec_facts_cache": {"size": len(_sec_facts_cache), "maxsize": _sec_facts_cache.maxsize, "ttl": _sec_facts_cache.ttl},
         "screener_cache": {"size": len(_screener_cache), "maxsize": _screener_cache.maxsize, "ttl": _screener_cache.ttl},
+    }
+
+
+# ---------------------------------------------------------------------------
+# 11. Alpha Vantage — supplementary fundamentals (optional free API key)
+#     https://www.alphavantage.co  — free tier: 25 req/day for premium,
+#                                    500 req/day for standard endpoints
+# ---------------------------------------------------------------------------
+
+_AV_BASE = "https://www.alphavantage.co/query"
+_av_cache: TTLCache = TTLCache(maxsize=100, ttl=settings.fundamentals_cache_ttl)
+
+
+def _av_get(function: str, ticker: str, **extra_params) -> Optional[dict]:
+    """Internal helper: call Alpha Vantage API if key is configured."""
+    if not settings.alpha_vantage_api_key:
+        return None  # graceful no-op when key is absent
+
+    key = hashkey("av", function, ticker.upper())
+    if key in _av_cache:
+        return _av_cache[key]
+
+    params = {
+        "function": function,
+        "symbol":   ticker.upper(),
+        "apikey":   settings.alpha_vantage_api_key,
+        **extra_params,
+    }
+    try:
+        resp = requests.get(_AV_BASE, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if "Note" in data or "Information" in data:
+            # Rate limit hit
+            logger.warning("Alpha Vantage rate limit for %s/%s", function, ticker)
+            return None
+        _av_cache[key] = data
+        return data
+    except Exception as exc:
+        logger.warning("Alpha Vantage %s(%s) failed: %s", function, ticker, exc)
+        return None
+
+
+def get_av_company_overview(ticker: str) -> dict:
+    """
+    Fetch company overview from Alpha Vantage — useful as a cross-check
+    or fallback for fundamental data.
+
+    Returns raw Alpha Vantage company overview dict or empty dict.
+    Requires ALPHA_VANTAGE_API_KEY in .env.
+    """
+    data = _av_get("OVERVIEW", ticker)
+    if not data:
+        return {}
+
+    return {
+        "ticker":           data.get("Symbol"),
+        "name":             data.get("Name"),
+        "sector":           data.get("Sector"),
+        "industry":         data.get("Industry"),
+        "country":          data.get("Country"),
+        "description":      data.get("Description"),
+        "market_cap":       _safe_int(data.get("MarketCapitalization")),
+        "pe_ratio":         _safe_float(data.get("PERatio")),
+        "forward_pe":       _safe_float(data.get("ForwardPE")),
+        "peg_ratio":        _safe_float(data.get("PEGRatio")),
+        "book_value":       _safe_float(data.get("BookValue")),
+        "dividend_yield":   _safe_float(data.get("DividendYield")),
+        "eps":              _safe_float(data.get("EPS")),
+        "revenue_ttm":      _safe_int(data.get("RevenueTTM")),
+        "gross_profit_ttm": _safe_int(data.get("GrossProfitTTM")),
+        "ebitda":           _safe_int(data.get("EBITDA")),
+        "beta":             _safe_float(data.get("Beta")),
+        "52w_high":         _safe_float(data.get("52WeekHigh")),
+        "52w_low":          _safe_float(data.get("52WeekLow")),
+        "analyst_target":   _safe_float(data.get("AnalystTargetPrice")),
+        "strong_buy":       _safe_int(data.get("AnalystRatingStrongBuy")),
+        "buy":              _safe_int(data.get("AnalystRatingBuy")),
+        "hold":             _safe_int(data.get("AnalystRatingHold")),
+        "sell":             _safe_int(data.get("AnalystRatingSell")),
+        "strong_sell":      _safe_int(data.get("AnalystRatingStrongSell")),
+        "source":           "Alpha Vantage",
+        "fetched_at":       datetime.utcnow().isoformat(),
+    }
+
+
+def get_av_earnings(ticker: str) -> dict:
+    """
+    Fetch annual and quarterly earnings (EPS) history from Alpha Vantage.
+    Useful for spotting earnings trends.
+    """
+    data = _av_get("EARNINGS", ticker)
+    if not data:
+        return {"ticker": ticker.upper(), "available": False, "reason": "No Alpha Vantage key"}
+
+    annual = []
+    for item in data.get("annualEarnings", []):
+        annual.append({
+            "fiscal_year_end": item.get("fiscalDateEnding"),
+            "reported_eps":    _safe_float(item.get("reportedEPS")),
+        })
+
+    quarterly = []
+    for item in data.get("quarterlyEarnings", [])[:12]:  # last 3 years
+        quarterly.append({
+            "fiscal_quarter_end": item.get("fiscalDateEnding"),
+            "reported_date":      item.get("reportedDate"),
+            "reported_eps":       _safe_float(item.get("reportedEPS")),
+            "estimated_eps":      _safe_float(item.get("estimatedEPS")),
+            "surprise":           _safe_float(item.get("surprise")),
+            "surprise_pct":       _safe_float(item.get("surprisePercentage")),
+        })
+
+    return {
+        "ticker":    ticker.upper(),
+        "annual":    annual,
+        "quarterly": quarterly,
+        "source":    "Alpha Vantage",
+        "fetched_at": datetime.utcnow().isoformat(),
+    }
+
+
+def get_av_income_statement(ticker: str) -> dict:
+    """
+    Fetch annual income statement from Alpha Vantage as a cross-check
+    against yfinance / SEC data.
+    """
+    data = _av_get("INCOME_STATEMENT", ticker)
+    if not data:
+        return {"ticker": ticker.upper(), "available": False}
+
+    annual = []
+    for report in data.get("annualReports", []):
+        annual.append({
+            "fiscal_year_end":     report.get("fiscalDateEnding"),
+            "currency":            report.get("reportedCurrency"),
+            "revenue":             _safe_int(report.get("totalRevenue")),
+            "gross_profit":        _safe_int(report.get("grossProfit")),
+            "operating_income":    _safe_int(report.get("operatingIncome")),
+            "net_income":          _safe_int(report.get("netIncome")),
+            "ebitda":              _safe_int(report.get("ebitda")),
+            "rd_expense":          _safe_int(report.get("researchAndDevelopment")),
+            "interest_expense":    _safe_int(report.get("interestExpense")),
+        })
+
+    return {
+        "ticker":   ticker.upper(),
+        "annual":   annual,
+        "source":   "Alpha Vantage",
+        "fetched_at": datetime.utcnow().isoformat(),
     }

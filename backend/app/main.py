@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import companies, screener, valuation
+from app.routers import companies, screener, valuation, macro, alternative
 from app.services.data_service import get_cache_stats
 
 settings = get_settings()
@@ -14,8 +14,11 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description=(
-        "Value investing research tool — pulls real-time and static financial data "
-        "from yfinance and SEC EDGAR to support Li Lu-style value investing research."
+        "Value investing research tool — pulls financial data from multiple open sources: "
+        "yfinance (quotes/fundamentals), SEC EDGAR (filings/XBRL/13F), "
+        "US Treasury (yield curve), FRED (macroeconomic data), "
+        "World Bank (GDP/economic indicators), BLS (CPI/inflation), "
+        "and optionally Alpha Vantage."
     ),
     version="0.1.0",
     docs_url="/api/docs",
@@ -40,6 +43,8 @@ app.add_middleware(
 app.include_router(companies.router)
 app.include_router(screener.router)
 app.include_router(valuation.router)
+app.include_router(macro.router)
+app.include_router(alternative.router)
 
 
 @app.get("/api/health")

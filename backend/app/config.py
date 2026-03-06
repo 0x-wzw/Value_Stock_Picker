@@ -23,10 +23,19 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24  # 24 hours
 
     # External APIs
-    # SEC EDGAR requires a User-Agent header identifying the requester
+    # SEC EDGAR — must identify your app per SEC policy
     sec_user_agent: str = "ValueStockPicker admin@example.com"
-    # Alpha Vantage (optional, free tier available at alphavantage.co)
+
+    # Alpha Vantage — optional free key (alphavantage.co), 25–500 req/day
     alpha_vantage_api_key: str = ""
+
+    # FRED (Federal Reserve) — optional free key (fred.stlouisfed.org)
+    # Enables higher rate limits; works without key for most series
+    fred_api_key: str = ""
+
+    # BLS (Bureau of Labor Statistics) — optional free key (bls.gov/developers)
+    # V1 API works without key; V2 needs key for higher limits
+    bls_api_key: str = ""
 
     # Cache TTLs (seconds)
     price_cache_ttl: int = 60          # 1 min for real-time prices
