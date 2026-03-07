@@ -1,22 +1,50 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from functools import lru_cache
+
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Value Stock Picker API"
-    VERSION: str = "0.1.0"
-    API_V1_STR: str = "/api/v1"
-    
-    SECRET_KEY: str = "secret-key-change-in-production"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8 # 8 days
-    
-    POSTGRES_SERVER: str = "localhost"
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "password"
-    POSTGRES_DB: str = "value_stock_picker"
-    
+    # App
+    app_name: str = "Value Stock Picker"
+    debug: bool = False
+
+    # Database — individual components (matches origin/main pattern)
+    postgres_server: str = "localhost"
+    postgres_user: str = "postgres"
+    postgres_password: str = "postgres"
+    postgres_db: str = "value_stock_picker"
+
     @property
-    def SQLALCHEMY_DATABASE_URI(self) -> str:
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}/{self.POSTGRES_DB}"
-    
+    def database_url(self) -> str:
+        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_server}/{self.postgres_db}"
+
+    # Auth
+    secret_key: str = "changeme-in-production-use-a-long-random-string"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24  # 24 hours
+
+    # External APIs
+    # SEC EDGAR — must identify your app per SEC policy
+    sec_user_agent: str = "ValueStockPicker admin@example.com"
+
+    # Alpha Vantage — optional free key (alphavantage.co), 25–500 req/day
+    alpha_vantage_api_key: str = ""
+
+    # FRED (Federal Reserve) — optional free key (fred.stlouisfed.org)
+    # Enables higher rate limits; works without key for most series
+    fred_api_key: str = ""
+
+    # BLS (Bureau of Labor Statistics) — optional free key (bls.gov/developers)
+    # V1 API works without key; V2 needs key for higher limits
+    bls_api_key: str = ""
+
+    # Cache TTLs (seconds)
+    price_cache_ttl: int = 60          # 1 min for real-time prices
+    fundamentals_cache_ttl: int = 3600  # 1 hour for fundamentals
+    filings_cache_ttl: int = 86400      # 24 hours for SEC filings
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-settings = Settings()
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

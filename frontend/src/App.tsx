@@ -1,28 +1,36 @@
-import { useState } from 'react'
+import React from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import AppShell from "./components/Layout/AppShell";
+import Home from "./pages/Home";
+import Screener from "./pages/Screener";
+import CompanyDashboard from "./pages/CompanyDashboard";
+import FinancialsPage from "./pages/FinancialsPage";
+import ValuationPage from "./pages/ValuationPage";
+import Watchlist from "./pages/Watchlist";
+import Portfolio from "./pages/Portfolio";
+import LearnPage from "./pages/LearnPage";
 
-function App() {
-    return (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
-            <h1 className="text-4xl font-bold text-blue-600 mb-4">Value Stock Picker</h1>
-            <p className="text-gray-600 text-lg mb-8">
-                Investigative workbench for deep fundamental analysis.
-            </p>
-
-            <div className="bg-white p-6 rounded-lg shadow-md max-w-sm w-full">
-                <h2 className="text-xl font-semibold mb-4 text-gray-800">System Status</h2>
-                <ul className="space-y-2 text-left">
-                    <li className="flex items-center text-green-600">
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                        Frontend Container Active
-                    </li>
-                    <li className="flex items-center text-amber-500">
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        Backend API Pending Connection
-                    </li>
-                </ul>
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppShell>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/screener" element={<Screener />} />
+          <Route path="/company/:ticker" element={<CompanyDashboard />} />
+          <Route path="/company/:ticker/financials" element={<FinancialsPage />} />
+          <Route path="/company/:ticker/valuation" element={<ValuationPage />} />
+          <Route path="/watchlist" element={<Watchlist />} />
+          <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/learn" element={<LearnPage />} />
+          <Route path="*" element={
+            <div className="text-center py-20">
+              <p className="text-2xl font-bold text-slate-400">404</p>
+              <p className="text-slate-500 mt-2">Page not found</p>
             </div>
-        </div>
-    )
+          } />
+        </Routes>
+      </AppShell>
+    </BrowserRouter>
+  );
 }
-
-export default App
